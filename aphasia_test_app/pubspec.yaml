@@ -47,7 +47,8 @@ dependencies:
 
   image_picker: ^1.2.1  # 이미지 변경 기능용
   shared_preferences: ^2.5.5 # 문항 템플릿 저장용
-
+  googleapis: ^16.0.0
+  googleapis_auth: ^2.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

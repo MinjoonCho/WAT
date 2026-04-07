@@ -107,7 +107,7 @@ class _TestSetupScreenState extends State<TestSetupScreen> {
               '검사일'  : _testDate,
               '검사자명' : _examinerCtrl.text,
               '검사장소' : _selectedLocation ?? '',
-              '검사코드' : _testCodeCtrl.text,
+              '검사코드' : '2026S${_testCodeCtrl.text}',
               '검사회차' : _sessionCtrl.text,
             },
             startTime: startTime,
@@ -197,10 +197,29 @@ class _TestSetupScreenState extends State<TestSetupScreen> {
                       _hCell('교육년수'),
                       _eduCell(),
                       _hCell('검사코드'),
-                      _inputCell(
-                        controller: _testCodeCtrl,
-                        hint: '2026S00001',
-                        textColor: Colors.red,
+                      // 검사코드는 2026S + 넘버패드 입력
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        child: Row(
+                          children: [
+                            const Text('2026S', style: TextStyle(fontSize: 15, color: Colors.blue)),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: TextField(
+                                controller: _testCodeCtrl,
+                                keyboardType: TextInputType.number,
+                                style: const TextStyle(fontSize: 15, color: Colors.red),
+                                decoration: const InputDecoration(
+                                  hintText: '00001',
+                                  hintStyle: TextStyle(color: Color(0xFF999999), fontSize: 14),
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                  contentPadding: EdgeInsets.symmetric(horizontal: 0, vertical: 12),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                     height: 96,
@@ -210,9 +229,9 @@ class _TestSetupScreenState extends State<TestSetupScreen> {
                   // 6행: 등록번호 | 검사회차
                   _row([
                     _hCell('등록번호'),
-                    _inputCell(controller: _regNoCtrl, hint: '2635114'),
+                    _inputCell(controller: _regNoCtrl, hint: '2635114', isNumber: true),
                     _hCell('검사회차'),
-                    _inputCell(controller: _sessionCtrl, hint: '1'),
+                    _inputCell(controller: _sessionCtrl, hint: '1', isNumber: true),
                   ]),
                 ],
               ),
@@ -291,11 +310,13 @@ class _TestSetupScreenState extends State<TestSetupScreen> {
     required TextEditingController controller,
     required String hint,
     Color textColor = Colors.black87,
+    bool isNumber = false,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: TextField(
         controller: controller,
+        keyboardType: isNumber ? TextInputType.number : TextInputType.text,
         style: TextStyle(fontSize: 15, color: textColor),
         decoration: InputDecoration(
           hintText: hint,
