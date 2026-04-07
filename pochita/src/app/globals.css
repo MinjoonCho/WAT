@@ -1,0 +1,158 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-orange: var(--pochita-orange);
+  --color-brand-light: var(--pochita-orange-light);
+  --color-brand-dark: var(--pochita-orange-dark);
+  --color-brand-bg: var(--pochita-bg);
+  --color-brand-card: var(--pochita-card);
+  --color-brand-text: var(--pochita-text);
+  --color-brand-text-sec: var(--pochita-text-secondary);
+  --color-brand-border: var(--pochita-border);
+}
+
+:root {
+  /* YPT Style Light Mode (Modern, soft, spacious) */
+  --pochita-orange: #FF5A00;
+  --pochita-orange-light: #FF8A3D;
+  --pochita-orange-dark: #D44200;
+  --pochita-orange-glow: rgba(255, 90, 0, 0.1);
+  
+  --pochita-bg: #F9FAFB;
+  --pochita-card: #FFFFFF;
+  --pochita-text: #191F28; /* Soft rich black */
+  --pochita-text-secondary: #8B95A1; /* Soft gray */
+  --pochita-border: rgba(0, 0, 0, 0.05); /* Extremely subtle border */
+}
+
+body.dark {
+  /* DARK / NEON MODE (Timer Active) */
+  --pochita-orange: #FF6B00;
+  --pochita-orange-light: #FF8C33;
+  --pochita-orange-dark: #CC5500;
+  --pochita-orange-glow: rgba(255, 107, 0, 0.6);
+  
+  --pochita-bg: #0A0A0A;
+  --pochita-card: #141414;
+  --pochita-text: #F5F5F5;
+  --pochita-text-secondary: #AAAAAA;
+  --pochita-border: #333333;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--pochita-bg);
+  min-height: 100vh;
+  transition: background-color 0.4s ease;
+}
+
+body {
+  background: var(--pochita-bg);
+  color: var(--pochita-text);
+  font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+  max-width: 430px;
+  margin: 0 auto;
+  position: relative;
+  transition: all 0.4s ease;
+}
+
+/* Subtle glow for dark mode */
+body.dark {
+  box-shadow: 0 0 0 1px rgba(255,107,0,0.08), 0 0 80px rgba(255,107,0,0.04);
+}
+
+@media (min-width: 500px) {
+  html {
+    background: #EAECEF;
+  }
+  body {
+    background: var(--pochita-bg);
+    box-shadow: 0 4px 60px rgba(0,0,0,0.05);
+  }
+  html:has(body.dark) {
+    background: radial-gradient(ellipse at top, #120800 0%, #050505 70%);
+  }
+  body.dark {
+    box-shadow:
+      0 0 0 1px rgba(255,107,0,0.12),
+      -20px 0 60px rgba(0,0,0,0.6),
+      20px 0 60px rgba(0,0,0,0.6);
+  }
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--pochita-orange); border-radius: 2px; }
+
+/* ============================
+   Keyframe Animations
+   ============================ */
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes slide-up {
+  from { transform: translateY(60px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes bounce-in {
+  0% { transform: scale(0.3); opacity: 0; }
+  50% { transform: scale(1.05); }
+  70% { transform: scale(0.9); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { text-shadow: 0 0 10px var(--pochita-orange), 0 0 20px var(--pochita-orange); }
+  50% { text-shadow: 0 0 20px var(--pochita-orange), 0 0 40px var(--pochita-orange), 0 0 60px var(--pochita-orange-dark); }
+}
+
+/* ============================
+   Utility Classes
+   ============================ */
+
+.spin-active {
+  animation: spin-slow 1.5s linear infinite;
+  display: inline-block;
+}
+
+.fade-in {
+  animation: fade-in 0.4s ease-out forwards;
+}
+
+.slide-up {
+  animation: slide-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.bounce-in {
+  animation: bounce-in 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) forwards;
+}
+
+.glow-text {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+.timer-digit {
+  font-family: 'Black Han Sans', monospace;
+  font-feature-settings: 'tnum';
+  letter-spacing: -0.02em;
+}
+
+.active\:scale-98:active {
+  transform: scale(0.98);
+}
