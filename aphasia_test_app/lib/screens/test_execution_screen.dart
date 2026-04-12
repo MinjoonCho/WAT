@@ -1,20 +1,27 @@
 import 'dart:io';
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+
 import '../models/test_item.dart';
 
 class TestExecutionScreen extends StatefulWidget {
   final List<TestItem> items;
   final Map<String, String> info;
   final DateTime startTime;
+  final bool randomizeItems;
+
   const TestExecutionScreen({
     super.key,
     required this.items,
     required this.info,
     required this.startTime,
+    this.randomizeItems = false,
   });
+
   @override
   State<TestExecutionScreen> createState() => _TestExecutionScreenState();
 }
@@ -26,24 +33,18 @@ class _TestExecutionScreenState extends State<TestExecutionScreen> {
   int _itemIndex = 0;
   int _step = 0;
 
-  late List<TestItem> _practiceItems;
-  late List<TestItem> _realItems;
+  late final List<TestItem> _practiceItems;
+  late final List<TestItem> _realItems;
 
   final FlutterTts _tts = FlutterTts();
   final AudioRecorder _recorder = AudioRecorder();
   late Directory _subDir;
 
-  // CSV 헤더: 문항, 이름, 명칭RT, 설명RT, 선택RT, 정오
-  List<List<dynamic>> _csvData = [];
-
-  // 반응시간 측정
+  final List<List<dynamic>> _csvData = [];
   final Stopwatch _rtSw = Stopwatch();
+  final Map<int, List<int>> _itemRTs = {};
   bool _rtActive = false;
 
-  // 문항별 RT 누적 [명칭ms, 설명ms, 선택ms]
-  final Map<int, List<int>> _itemRTs = {};
-
-  // RecordConfig — 128kbps, 44100Hz, voiceRecognition 소스
   static const _recCfg = RecordConfig(
     encoder: AudioEncoder.aacLc,
     bitRate: 128000,
@@ -58,31 +59,114 @@ class _TestExecutionScreenState extends State<TestExecutionScreen> {
   void initState() {
     super.initState();
     _practiceItems = widget.items.where((e) => e.isPractice).toList();
-    _realItems     = widget.items.where((e) => !e.isPractice).toList();
+    _realItems = widget.items.where((e) => !e.isPractice).toList();
+    if (widget.randomizeItems) {
+      _realItems.shuffle(Random());
+    }
     _init();
   }
 
   Future<void> _init() async {
-    final root  = await getApplicationDocumentsDirectory();
+    final root = await getApplicationDocumentsDirectory();
     final regNo = widget.info['등록번호'] ?? 'unknown';
     _subDir = Directory('${root.path}/$regNo');
-    if (!await _subDir.exists()) await _subDir.create();
-    _csvData.add(['문항번호', '문항명', '명칭반응시간(ms)', '설명반응시간(ms)', '선택반응시간(ms)', '정오']);
-    await _tts.setLanguage('ko-KR');
-    await _tts.setSpeechRate(0.45);
-    // TTS 완료 → 타이머 시작
+    if (!await _subDir.exists()) {
+      await _subDir.create();
+    }
+
+    _csvData.add([
+      'Item No.',
+      'Item',
+      'NamingRT(ms.)',
+      'DescriptionRT(ms.)',
+      'AssociationRT(ms.)',
+      'Accuracy',
+    ]);
+
+    await _configureTts();
     _tts.setCompletionHandler(() {
-      if (_phase == _Phase.real && (_step == 0 || _step == 1 || _step == 2)) {
+      if (!mounted) return;
+
+      if (_phase == _Phase.real && (_step == 0 || _step == 1)) {
         _startRT();
-        setState(() {}); // 타이머 상태 반영
+        setState(() {});
+        return;
+      }
+
+      if (_phase == _Phase.real && _step == 2) {
+        _startRT();
+        setState(() => _step = 3);
+        return;
+      }
+
+      if (_phase == _Phase.practice && _step == 3) {
+        setState(() => _step = 4);
       }
     });
+
     await _speak('지금부터 그림을 보여줄 거예요. 그림을 잘 보고 대답해 보세요.');
   }
 
+  Future<void> _configureTts() async {
+    await _tts.awaitSpeakCompletion(true);
+    await _tts.setLanguage('ko-KR');
+    await _tts.setSpeechRate(0.5);
+    await _tts.setPitch(0.95);
+
+    try {
+      final rawVoices = await _tts.getVoices;
+      if (rawVoices is! List) return;
+
+      final voices = rawVoices.whereType<Map>().toList();
+      final koreanVoices = voices.where((voice) {
+        final locale = '${voice['locale'] ?? ''}'.toLowerCase();
+        return locale.startsWith('ko');
+      }).toList();
+
+      if (koreanVoices.isEmpty) return;
+
+      koreanVoices.sort((a, b) {
+        return _voiceQualityScore(b).compareTo(_voiceQualityScore(a));
+      });
+
+      final bestVoice = koreanVoices.first;
+      final voice = <String, String>{};
+      if (bestVoice['name'] != null && bestVoice['locale'] != null) {
+        voice['name'] = '${bestVoice['name']}';
+        voice['locale'] = '${bestVoice['locale']}';
+      }
+      if (bestVoice['identifier'] != null) {
+        voice['identifier'] = '${bestVoice['identifier']}';
+      }
+      if (voice.isNotEmpty) {
+        await _tts.setVoice(voice);
+      }
+    } catch (_) {
+      // 플랫폼이 음성 조회를 지원하지 않으면 기본 한국어 음성을 사용한다.
+    }
+  }
+
+  int _voiceQualityScore(Map voice) {
+    final quality = _asInt(voice['quality']);
+    final latency = _asInt(voice['latency']);
+    final networkPenalty = _asBool(voice['network_required']) ? 1000 : 0;
+    return quality - latency - networkPenalty;
+  }
+
+  int _asInt(dynamic value) {
+    if (value is int) return value;
+    return int.tryParse('$value') ?? 0;
+  }
+
+  bool _asBool(dynamic value) {
+    if (value is bool) return value;
+    return '$value'.toLowerCase() == 'true';
+  }
+
   void _startRT() {
-    _rtSw.reset();
-    _rtSw.start();
+    _rtSw
+      ..reset()
+      ..start();
     _rtActive = true;
   }
 
@@ -104,100 +188,143 @@ class _TestExecutionScreenState extends State<TestExecutionScreen> {
   }
 
   Future<void> _stopRec() async {
-    if (await _recorder.isRecording()) await _recorder.stop();
+    if (await _recorder.isRecording()) {
+      await _recorder.stop();
+    }
   }
 
-  // ── Next 버튼 처리 ────────────────────────────────────────────────────────
+  String _copula(String word) {
+    final trimmed = word.trim();
+    if (trimmed.isEmpty) return '예요';
+
+    for (var i = trimmed.length - 1; i >= 0; i--) {
+      final code = trimmed.codeUnitAt(i);
+      if (_isSkippableCodeUnit(code)) continue;
+      if (code < 0xAC00 || code > 0xD7A3) return '예요';
+      final hasBatchim = (code - 0xAC00) % 28 != 0;
+      return hasBatchim ? '이에요' : '예요';
+    }
+
+    return '예요';
+  }
+
+  bool _isSkippableCodeUnit(int code) {
+    return code == 0x20 ||
+        code == 0x2E ||
+        code == 0x2C ||
+        code == 0x21 ||
+        code == 0x3F ||
+        code == 0x22 ||
+        code == 0x27 ||
+        code == 0x28 ||
+        code == 0x29;
+  }
+
+  String _itemDescriptionLead(String name) => '이건 $name${_copula(name)}';
+
   Future<void> _next() async {
     switch (_phase) {
       case _Phase.instruction:
         if (_practiceItems.isNotEmpty) {
-          setState(() { _phase = _Phase.practice; _itemIndex = 0; _step = 0; });
-          _runPracticeStep();
+          setState(() {
+            _phase = _Phase.practice;
+            _itemIndex = 0;
+            _step = 0;
+          });
+          await _runPracticeStep();
         } else {
           _toTransition();
         }
         break;
-
       case _Phase.practice:
         if (_step < 5) {
           setState(() => _step++);
-          _runPracticeStep();
+          await _runPracticeStep();
+        } else if (_itemIndex < _practiceItems.length - 1) {
+          setState(() {
+            _itemIndex++;
+            _step = 0;
+          });
+          await _runPracticeStep();
         } else {
-          if (_itemIndex < _practiceItems.length - 1) {
-            setState(() { _itemIndex++; _step = 0; });
-            _runPracticeStep();
-          } else {
-            _toTransition();
-          }
+          _toTransition();
         }
         break;
-
       case _Phase.transition:
         if (_realItems.isNotEmpty) {
-          setState(() { _phase = _Phase.real; _itemIndex = 0; _step = 0; });
-          _runRealStep();
+          setState(() {
+            _phase = _Phase.real;
+            _itemIndex = 0;
+            _step = 0;
+          });
+          await _runRealStep();
         } else {
-          _finish();
+          await _finish();
         }
         break;
-
       case _Phase.real:
         await _handleRealNext();
         break;
-
       case _Phase.done:
-        Navigator.popUntil(context, (r) => r.isFirst);
+        Navigator.popUntil(context, (route) => route.isFirst);
         break;
     }
   }
 
   Future<void> _handleRealNext() async {
     switch (_step) {
-      case 0: // 명칭 → RT 기록, 녹음 중지, step1
+      case 0:
         final ms = _stopRT();
         _itemRTs[_itemIndex] = [ms, 0, 0];
         await _stopRec();
         setState(() => _step = 1);
-        _runRealStep();
+        await _runRealStep();
         break;
-      case 1: // 설명 → RT 기록, 녹음 중지, step2
+      case 1:
         final ms = _stopRT();
         _itemRTs[_itemIndex]![1] = ms;
         await _stopRec();
         setState(() => _step = 2);
-        _runRealStep();
+        await _runRealStep();
         break;
-      case 2: // 선택질문 → step3 (RT는 계속 실행, TTS 완료 후 이미 시작됨)
+      case 2:
         setState(() => _step = 3);
         break;
-      default:
+      case 3:
+      case 4:
+      case 5:
         break;
     }
   }
 
-  // 선택지 탭 처리 (step 3)
   Future<void> _handleChoice(String chosen) async {
     final ms = _stopRT();
     final item = _realItems[_itemIndex];
     _itemRTs[_itemIndex] ??= [0, 0, 0];
     _itemRTs[_itemIndex]![2] = ms;
+
     final isCorrect = (chosen == '1' && item.correctOptionIndex == 1) ||
-                      (chosen == '2' && item.correctOptionIndex == 2);
+        (chosen == '2' && item.correctOptionIndex == 2);
+
     _csvData.add([
       _itemIndex + 1,
       item.name,
       _itemRTs[_itemIndex]![0],
       _itemRTs[_itemIndex]![1],
       ms,
-      isCorrect ? '정답' : '오답',
+      isCorrect ? 'Correct' : 'Incorrect',
     ]);
+
     if (_itemIndex < _realItems.length - 1) {
-      setState(() { _itemIndex++; _step = 0; });
-      _runRealStep();
-    } else {
-      _finish();
+      setState(() {
+        _itemIndex++;
+        _step = 0;
+      });
+      await _runRealStep();
+      return;
     }
+
+    await _finish();
   }
 
   void _toTransition() {
@@ -208,14 +335,24 @@ class _TestExecutionScreenState extends State<TestExecutionScreen> {
   Future<void> _runPracticeStep() async {
     if (_practiceItems.isEmpty) return;
     final item = _practiceItems[_itemIndex];
+
     switch (_step) {
-      case 0: await _speak(item.namingInstruction); break;
-      case 1: await _speak('이건 ${item.name}이에요. ${item.descInstruction}'); break;
-      case 2: break; // 예시 텍스트만 표시
-      case 3: await _speak(item.choiceQuestion); break;
-      case 4: break; // 선택지 이미지 표시
+      case 0:
+        await _speak(item.namingInstruction);
+        break;
+      case 1:
+        await _speak('${_itemDescriptionLead(item.name)}. ${item.descInstruction}');
+        break;
+      case 2:
+        break;
+      case 3:
+        await _speak(item.choiceQuestion);
+        break;
+      case 4:
+        break;
       case 5:
-        if (item.practiceAnswerExplanation != null) {
+        if (item.practiceAnswerExplanation != null &&
+            item.practiceAnswerExplanation!.trim().isNotEmpty) {
           await _speak(item.practiceAnswerExplanation!);
         }
         break;
@@ -225,46 +362,50 @@ class _TestExecutionScreenState extends State<TestExecutionScreen> {
   Future<void> _runRealStep() async {
     if (_realItems.isEmpty) return;
     final item = _realItems[_itemIndex];
-    final idx  = _itemIndex + 1;
+    final idx = _itemIndex + 1;
+
     switch (_step) {
       case 0:
         await _speak(item.namingInstruction);
         await _startRec('naming_$idx');
         break;
       case 1:
-        await _speak('이건 ${item.name}이에요. ${item.descInstruction}');
+        await _speak('${_itemDescriptionLead(item.name)}. ${item.descInstruction}');
         await _startRec('desc_$idx');
         break;
       case 2:
         await _speak(item.choiceQuestion);
         break;
       case 3:
-        // 이미지 표시만 (tts 없음, 타이머는 step2 TTS 완료 시 시작)
+      case 4:
+      case 5:
         break;
     }
   }
 
-  void _finish() async {
+  Future<void> _finish() async {
     await _stopRec();
-    final endTime  = DateTime.now();
+    final endTime = DateTime.now();
     final totalMin = endTime.difference(widget.startTime).inMinutes;
-    final csvFile  = File('${_subDir.path}/result.csv');
+    final csvFile = File('${_subDir.path}/result.csv');
     final headerInfo = [
-      '피검자명,${widget.info['피검자명']}',
-      '등록번호,${widget.info['등록번호']}',
-      '검사일,${widget.info['검사일']}',
-      '검사자명,${widget.info['검사자명']}',
-      '검사장소,${widget.info['검사장소']}',
-      '검사코드,${widget.info['검사코드']}',
-      '소요시간(분),$totalMin',
+      'Participant Name,${widget.info['피검자명']}',
+      'Registration No.,${widget.info['등록번호']}',
+      'Test Date,${widget.info['검사일']}',
+      'Examiner,${widget.info['검사자명']}',
+      'Test Location,${widget.info['검사장소']}',
+      'Test Code,${widget.info['검사코드']}',
+      'Randomization,${widget.info['문항랜덤화'] == '예' ? 'Yes' : 'No'}',
+      'Duration(min),$totalMin',
       '',
     ].join('\n');
-    final rows = _csvData.map((r) => r.join(',')).join('\n');
+    final rows = _csvData.map((row) => row.join(',')).join('\n');
     await csvFile.writeAsString('$headerInfo$rows\n');
-    setState(() => _phase = _Phase.done);
+    if (mounted) {
+      setState(() => _phase = _Phase.done);
+    }
   }
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   @override
   Widget build(BuildContext context) {
     switch (_phase) {
@@ -281,180 +422,275 @@ class _TestExecutionScreenState extends State<TestExecutionScreen> {
     }
   }
 
-  // ── 텍스트 전용 화면 ───────────────────────────────────────────────────────
   Widget _textScreen(String text) {
     return Scaffold(
       backgroundColor: Colors.white,
-      body: Stack(children: [
-        Center(
-          child: Padding(
-            padding: const EdgeInsets.all(48),
-            child: Text(text,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 34, fontWeight: FontWeight.bold, height: 1.7)),
+      body: Stack(
+        children: [
+          Center(
+            child: Padding(
+              padding: _pagePadding(horizontal: 48, vertical: 40),
+              child: Text(
+                text,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: _font(34),
+                  fontWeight: FontWeight.bold,
+                  height: 1.7,
+                ),
+              ),
+            ),
           ),
-        ),
-        _nextBtn(),
-      ]),
+          _nextBtn(),
+        ],
+      ),
     );
   }
 
-  // ── 연습문항 화면 ──────────────────────────────────────────────────────────
   Widget _practiceScreen() {
     if (_practiceItems.isEmpty) return const SizedBox();
     final item = _practiceItems[_itemIndex];
+
     return Scaffold(
       backgroundColor: Colors.white,
-      body: Stack(children: [
-        _practiceContent(item),
-        _label('연습문항'),
-        if (_step != 4) _nextBtn(),
-      ]),
+      body: Stack(
+        children: [
+          _practiceContent(item),
+          _label('연습문항'),
+          if (_step != 3 && _step != 4) _nextBtn(),
+        ],
+      ),
     );
   }
 
   Widget _practiceContent(TestItem item) {
     switch (_step) {
-      case 0: return _namingView(item.namingInstruction, item.imagePath);
-      case 1: return _descView('이건 ${item.name}이에요.\n${item.descInstruction}', item.imagePath);
+      case 0:
+        return _namingView(item.namingInstruction, item.imagePath);
+      case 1:
+        return _descView(
+          '${_itemDescriptionLead(item.name)}.\n${item.descInstruction}',
+          item.imagePath,
+        );
       case 2:
-        return Column(children: [
-          Expanded(child: _descView('이건 ${item.name}이에요.\n${item.descInstruction}', item.imagePath)),
-          if (item.practiceDescExample != null)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(40, 16, 40, 80),
-              child: Text(item.practiceDescExample!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 22, color: Color(0xFF555555), height: 1.8)),
+        return Column(
+          children: [
+            Expanded(
+              child: _descView(
+                '${_itemDescriptionLead(item.name)}.\n${item.descInstruction}',
+                item.imagePath,
+              ),
             ),
-        ]);
-      case 3: return _choiceQView(item.choiceQuestion, item.imagePath);
-      case 4: return _choiceImgView(item, onTap: (_) => _next(), highlight: -1);
-      case 5: return _choiceImgView(item, onTap: null, highlight: item.correctOptionIndex,
-                  explanation: item.practiceAnswerExplanation);
-      default: return const SizedBox();
+            if (item.practiceDescExample != null)
+              Container(
+                width: double.infinity,
+                padding: _pagePadding(horizontal: 40, vertical: 28),
+                child: Text(
+                  item.practiceDescExample!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: _font(28),
+                    color: const Color(0xFF555555),
+                    height: 1.8,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+          ],
+        );
+      case 3:
+        return _choiceQView(item.choiceQuestion, item.imagePath);
+      case 4:
+        return _choiceImgView(item, onTap: (_) => _next(), highlight: -1);
+      case 5:
+        return _choiceImgView(
+          item,
+          onTap: null,
+          highlight: item.correctOptionIndex,
+          explanation: item.practiceAnswerExplanation,
+        );
     }
+    return const SizedBox();
   }
 
-  // ── 본문항 화면 ────────────────────────────────────────────────────────────
   Widget _realScreen() {
     if (_realItems.isEmpty) return const SizedBox();
     final item = _realItems[_itemIndex];
+
     return Scaffold(
       backgroundColor: Colors.white,
-      body: Stack(children: [
-        _realContent(item),
-        _label('문항 ${_itemIndex + 1}'),
-        if (_step != 3) _nextBtn(),
-      ]),
+      body: Stack(
+        children: [
+          _realContent(item),
+          _label('문항 ${_itemIndex + 1}'),
+          if (_step == 0 || _step == 1) _nextBtn(),
+        ],
+      ),
     );
   }
 
   Widget _realContent(TestItem item) {
     switch (_step) {
-      case 0: return _namingView(item.namingInstruction, item.imagePath);
-      case 1: return _descView('이건 ${item.name}이에요.\n${item.descInstruction}', item.imagePath);
-      case 2: return _choiceQView(item.choiceQuestion, item.imagePath);
-      case 3: return _choiceImgView(item, onTap: _handleChoice, highlight: -1);
-      default: return const SizedBox();
+      case 0:
+        return _namingView(item.namingInstruction, item.imagePath);
+      case 1:
+        return _descView(
+          '${_itemDescriptionLead(item.name)}.\n${item.descInstruction}',
+          item.imagePath,
+        );
+      case 2:
+        return _choiceQView(item.choiceQuestion, item.imagePath);
+      case 3:
+        return _choiceImgView(item, onTap: _handleChoice, highlight: -1);
+      case 4:
+      case 5:
+        return const SizedBox();
     }
+    return const SizedBox();
   }
 
-  // ── 종료 화면 ──────────────────────────────────────────────────────────────
   Widget _doneScreen() {
     return Scaffold(
       backgroundColor: Colors.white,
       body: Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('끝!', style: TextStyle(fontSize: 72)),
-          const SizedBox(height: 32),
-          ElevatedButton(
-            onPressed: () => Navigator.popUntil(context, (r) => r.isFirst),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF9C27B0),
-              foregroundColor: Colors.white,
-              minimumSize: const Size(280, 72),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              elevation: 0,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '끝!',
+              style: TextStyle(fontSize: _font(72)),
             ),
-            child: const Text('수고했습니다!',
-              style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
-          ),
-        ]),
+            SizedBox(height: _space(32)),
+            ElevatedButton(
+              onPressed: () => Navigator.popUntil(context, (route) => route.isFirst),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF9C27B0),
+                foregroundColor: Colors.white,
+                minimumSize: Size(_space(280), _space(72)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                elevation: 0,
+              ),
+              child: Text(
+                '수고했습니다!',
+                style: TextStyle(
+                  fontSize: _font(26),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 공통 레이아웃
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  // 명칭: 질문 상단 + 이미지 (남은 공간 전체)
-  Widget _namingView(String q, String? path) {
+  Widget _namingView(String question, String? path) {
     return SafeArea(
-      child: Column(children: [
-        const SizedBox(height: 56),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 40),
-          child: Text(q,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
-        ),
-        const SizedBox(height: 16),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(40, 0, 40, 90),
-            child: _img(path),
+      child: Column(
+        children: [
+          SizedBox(height: _space(56)),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: _space(40)),
+            child: Text(
+              question,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: _font(32),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
-        ),
-      ]),
+          SizedBox(height: _space(16)),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                _space(40),
+                0,
+                _space(40),
+                _space(90),
+              ),
+              child: _img(path),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  // 설명: 텍스트 상단 + 이미지 (남은 공간)
   Widget _descView(String text, String? path) {
     return SafeArea(
-      child: Column(children: [
-        const SizedBox(height: 24),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 40),
-          child: Text(text,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, height: 1.5)),
-        ),
-        const SizedBox(height: 16),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(40, 0, 40, 90),
-            child: _img(path),
+      child: Column(
+        children: [
+          SizedBox(height: _space(24)),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: _space(40)),
+            child: Text(
+              text,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: _font(28),
+                fontWeight: FontWeight.bold,
+                height: 1.5,
+              ),
+            ),
           ),
-        ),
-      ]),
+          SizedBox(height: _space(16)),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                _space(40),
+                0,
+                _space(40),
+                _space(90),
+              ),
+              child: _img(path),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  // 선택질문: 이미지(30%) + 질문 텍스트
-  Widget _choiceQView(String q, String? path) {
+  Widget _choiceQView(String question, String? path) {
     return SafeArea(
-      child: Column(children: [
-        const SizedBox(height: 16),
-        Expanded(flex: 3, child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 60),
-          child: _img(path),
-        )),
-        const SizedBox(height: 16),
-        Expanded(flex: 3, child: Padding(
-          padding: const EdgeInsets.fromLTRB(40, 0, 40, 90),
-          child: Text(q,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, height: 1.6)),
-        )),
-      ]),
+      child: Column(
+        children: [
+          SizedBox(height: _space(16)),
+          Expanded(
+            flex: 3,
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: _space(60)),
+              child: _img(path),
+            ),
+          ),
+          SizedBox(height: _space(16)),
+          Expanded(
+            flex: 3,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                _space(40),
+                0,
+                _space(40),
+                _space(90),
+              ),
+              child: Text(
+                question,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: _font(28),
+                  fontWeight: FontWeight.bold,
+                  height: 1.6,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  // 선택지 이미지
   Widget _choiceImgView(
     TestItem item, {
     required void Function(String)? onTap,
@@ -462,117 +698,235 @@ class _TestExecutionScreenState extends State<TestExecutionScreen> {
     String? explanation,
   }) {
     return SafeArea(
-      child: Column(children: [
-        const SizedBox(height: 8),
-        // 상단 메인 이미지 (25%)
-        Expanded(flex: 25, child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 80),
-          child: _img(item.imagePath),
-        )),
-        const SizedBox(height: 8),
-        // 설명 또는 질문
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 40),
-          child: Text(
-            explanation ?? item.choiceQuestion,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, height: 1.5),
-          ),
-        ),
-        const SizedBox(height: 8),
-        // 선택지 이미지 (45%)
-        Expanded(flex: 45, child: Row(children: [
-          _choiceCell(item.option1, item.option1ImagePath,
-            highlight: highlight == 1, onTap: onTap != null ? () => onTap('1') : null),
-          _choiceCell(item.option2, item.option2ImagePath,
-            highlight: highlight == 2, onTap: onTap != null ? () => onTap('2') : null),
-        ])),
-        const SizedBox(height: 8),
-      ]),
-    );
-  }
-
-  Widget _choiceCell(String label, String? path, {required bool highlight, VoidCallback? onTap}) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+      child: Column(
+        children: [
+          SizedBox(height: _space(8)),
           Expanded(
-            child: Stack(alignment: Alignment.center, children: [
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: _img(path),
-              ),
-              if (highlight)
-                Container(
-                  margin: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.red, width: 6,
-                        strokeAlign: BorderSide.strokeAlignOutside),
-                  ),
-                ),
-            ]),
+            flex: 25,
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: _space(80)),
+              child: _img(item.imagePath),
+            ),
           ),
+          SizedBox(height: _space(8)),
           Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text(label,
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            padding: EdgeInsets.symmetric(horizontal: _space(40)),
+            child: Text(
+              explanation ?? item.choiceQuestion,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: _font(24),
+                fontWeight: FontWeight.bold,
+                height: 1.5,
+              ),
+            ),
           ),
-        ]),
+          SizedBox(height: _space(8)),
+          Expanded(
+            flex: 45,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isVertical = constraints.maxWidth < 720;
+                final children = [
+                  _choiceCell(
+                    item.option1,
+                    item.option1ImagePath,
+                    highlight: highlight == 1,
+                    onTap: onTap != null ? () => onTap('1') : null,
+                  ),
+                  _choiceCell(
+                    item.option2,
+                    item.option2ImagePath,
+                    highlight: highlight == 2,
+                    onTap: onTap != null ? () => onTap('2') : null,
+                  ),
+                ];
+
+                if (isVertical) {
+                  return Column(children: children);
+                }
+                return Row(children: children);
+              },
+            ),
+          ),
+          SizedBox(height: _space(8)),
+        ],
       ),
     );
   }
 
-  // 이미지 위젯 (fit: contain, 전체 공간 활용)
-  Widget _img(String? path) {
-    if (path != null && File(path).existsSync()) {
-      return Image.file(File(path),
-        width: double.infinity,
-        height: double.infinity,
-        fit: BoxFit.contain);
-    }
-    return const Center(
-      child: Icon(Icons.image_not_supported_outlined, size: 80, color: Color(0xFFCCCCCC)));
+  Widget _choiceCell(
+    String label,
+    String? path, {
+    required bool highlight,
+    VoidCallback? onTap,
+  }) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Expanded(
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Padding(
+                    padding: EdgeInsets.all(_space(16)),
+                    child: _img(path),
+                  ),
+                  if (highlight)
+                    Container(
+                      margin: EdgeInsets.all(_space(4)),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.red,
+                          width: _space(6),
+                          strokeAlign: BorderSide.strokeAlignOutside,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.only(bottom: _space(12)),
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: _font(22),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
-  // 문항 라벨 (좌상단)
+  Widget _img(String? path) {
+    if (path != null && path.startsWith('asset:')) {
+      return Image.asset(
+        path.substring('asset:'.length),
+        width: double.infinity,
+        height: double.infinity,
+        fit: BoxFit.contain,
+      );
+    }
+    if (path != null && File(path).existsSync()) {
+      return Image.file(
+        File(path),
+        width: double.infinity,
+        height: double.infinity,
+        fit: BoxFit.contain,
+      );
+    }
+
+    return Center(
+      child: Icon(
+        Icons.image_not_supported_outlined,
+        size: _space(80),
+        color: const Color(0xFFCCCCCC),
+      ),
+    );
+  }
+
   Widget _label(String text) {
     return Positioned(
-      top: 40, left: 24,
+      top: _space(28),
+      left: _space(16),
       child: SafeArea(
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+          padding: EdgeInsets.symmetric(
+            horizontal: _space(18),
+            vertical: _space(8),
+          ),
           decoration: BoxDecoration(
             color: Colors.grey.shade600,
             borderRadius: BorderRadius.circular(50),
           ),
-          child: Text(text,
-            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+          child: Text(
+            text,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: _font(16),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ),
       ),
     );
   }
 
-  // Next 버튼 (우하단)
   Widget _nextBtn() {
     return Positioned(
-      right: 32, bottom: 32,
+      right: _space(24),
+      bottom: _space(24),
       child: GestureDetector(
         onTap: _next,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+          padding: EdgeInsets.symmetric(
+            horizontal: _space(24),
+            vertical: _space(14),
+          ),
           decoration: BoxDecoration(
             color: const Color(0xFF888888),
             borderRadius: BorderRadius.circular(50),
           ),
-          child: const Row(mainAxisSize: MainAxisSize.min, children: [
-            Text('Next', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
-            SizedBox(width: 6),
-            Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
-          ]),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Next',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: _font(18),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              SizedBox(width: _space(6)),
+              Icon(
+                Icons.arrow_forward_ios,
+                color: Colors.white,
+                size: _space(16),
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  double _uiScale() {
+    final shortestSide = MediaQuery.of(context).size.shortestSide;
+    return (shortestSide / 900).clamp(0.72, 1.0).toDouble();
+  }
+
+  double _font(double base) {
+    return (base * _uiScale()).clamp(base * 0.72, base).toDouble();
+  }
+
+  double _space(double base) {
+    return base * _uiScale();
+  }
+
+  EdgeInsets _pagePadding({
+    required double horizontal,
+    required double vertical,
+  }) {
+    return EdgeInsets.symmetric(
+      horizontal: _space(horizontal),
+      vertical: _space(vertical),
+    );
+  }
+
+  @override
+  void dispose() {
+    _tts.stop();
+    _recorder.dispose();
+    super.dispose();
   }
 }
