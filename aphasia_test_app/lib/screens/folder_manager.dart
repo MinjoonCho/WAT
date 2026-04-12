@@ -1,9 +1,10 @@
 import 'dart:io';
+import 'package:archive/archive_io.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
-import '../utils/drive_helper.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:csv/csv.dart';
+import 'package:share_plus/share_plus.dart';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 데이터 확인 화면 (피험자 폴더 목록 및 클릭 시 상세 화면 이동)
@@ -137,29 +138,44 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
     }
   }
 
-  Future<void> _uploadToDrive() async {
+  Future<void> _sharePatientFolder() async {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) {
-        ValueNotifier<String> statusMsg = ValueNotifier<String>('업로드 준비 중...');
-        bool isDone = false;
-        
-        DriveHelper.uploadPatientFolder(
-          widget.patientDir,
-          widget.regNo,
-          onProgress: (msg) {
-            statusMsg.value = msg;
-            if (msg.contains('성공:') || msg.contains('오류') || msg.contains('취소')) {
-              isDone = true;
+        final statusMsg = ValueNotifier<String>('압축 파일을 준비 중...');
+
+        Future(() async {
+          try {
+            final tempDir = await getTemporaryDirectory();
+            final zipPath = '${tempDir.path}${Platform.pathSeparator}WAT_${widget.regNo}.zip';
+            final encoder = ZipFileEncoder();
+            encoder.create(zipPath);
+
+            final entries = widget.patientDir.listSync(recursive: true);
+            for (final entry in entries.whereType<File>()) {
+              final relativePath = entry.path.substring(widget.patientDir.path.length + 1);
+              statusMsg.value = '압축 중: $relativePath';
+              encoder.addFile(entry, relativePath);
             }
-          },
-        ).then((_) {
-            if (!isDone) statusMsg.value = '업로드 동작 수행 완료됨.';
+            encoder.close();
+
+            statusMsg.value = '공유 화면을 여는 중...';
+            await SharePlus.instance.share(
+              ShareParams(
+                files: [XFile(zipPath)],
+                text: 'WAT 검사 데이터 ${widget.regNo}',
+                subject: 'WAT_${widget.regNo}.zip',
+              ),
+            );
+            statusMsg.value = '공유가 완료되었습니다.';
+          } catch (e) {
+            statusMsg.value = '공유 준비 중 오류가 발생했습니다: $e';
+          }
         });
 
         return AlertDialog(
-          title: const Text('구글 드라이브 업로드'),
+          title: const Text('압축 후 공유'),
           content: ValueListenableBuilder<String>(
             valueListenable: statusMsg,
             builder: (c, val, child) {
@@ -169,7 +185,7 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
                 children: [
                   Text(val),
                   const SizedBox(height: 16),
-                  if (!val.contains('성공') && !val.contains('오류') && !val.contains('취소') && !val.contains('완료'))
+                  if (!val.contains('완료') && !val.contains('오류'))
                     const LinearProgressIndicator(color: Color(0xFF9C27B0)),
                 ],
               );
@@ -195,9 +211,9 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
         foregroundColor: Colors.white,
         actions: [
           IconButton(
-            icon: const Icon(Icons.cloud_upload),
-            tooltip: '구글 드라이브에 업로드',
-            onPressed: _uploadToDrive,
+            icon: const Icon(Icons.share),
+            tooltip: 'zip으로 압축 후 공유',
+            onPressed: _sharePatientFolder,
           ),
         ],
       ),

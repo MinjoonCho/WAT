@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/test_item.dart';
+import '../utils/default_template.dart';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 문항 관리 화면 (관리자용)
@@ -32,7 +33,22 @@ class _TemplateManagerState extends State<TemplateManager> {
         () => items =
             (jsonDecode(data) as List).map((e) => TestItem.fromJson(e)).toList(),
       );
+      return;
     }
+
+    items = buildDefaultTemplateItems();
+    await _save();
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Future<void> _restoreDefaultTemplate() async {
+    setState(() => items = buildDefaultTemplateItems());
+    await _save();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('기본 템플릿으로 복원했습니다.')),
+    );
   }
 
   Future<void> _save() async {
@@ -119,8 +135,7 @@ class _TemplateManagerState extends State<TemplateManager> {
                       const SizedBox(width: 12),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(6),
-                        child: Image.file(File(target.imagePath!),
-                          width: 72, height: 72, fit: BoxFit.cover),
+                        child: _imagePreview(target.imagePath!, 72),
                       ),
                     ],
                   ]),
@@ -164,8 +179,7 @@ class _TemplateManagerState extends State<TemplateManager> {
                             padding: const EdgeInsets.only(top: 4),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(6),
-                              child: Image.file(File(target.option1ImagePath!),
-                                width: 64, height: 64, fit: BoxFit.cover),
+                              child: _imagePreview(target.option1ImagePath!, 64),
                             ),
                           ),
                       ]),
@@ -202,8 +216,7 @@ class _TemplateManagerState extends State<TemplateManager> {
                             padding: const EdgeInsets.only(top: 4),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(6),
-                              child: Image.file(File(target.option2ImagePath!),
-                                width: 64, height: 64, fit: BoxFit.cover),
+                              child: _imagePreview(target.option2ImagePath!, 64),
                             ),
                           ),
                       ]),
@@ -287,6 +300,13 @@ class _TemplateManagerState extends State<TemplateManager> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      persistentFooterButtons: [
+        OutlinedButton.icon(
+          onPressed: _restoreDefaultTemplate,
+          icon: const Icon(Icons.restore),
+          label: const Text('기본 템플릿 복원'),
+        ),
+      ],
       floatingActionButton: FloatingActionButton(
         onPressed: () => _editItem(null),
         backgroundColor: const Color(0xFF9C27B0),
@@ -391,6 +411,23 @@ class _TemplateManagerState extends State<TemplateManager> {
                 );
               },
             ),
+    );
+  }
+
+  Widget _imagePreview(String path, double size) {
+    if (path.startsWith('asset:')) {
+      return Image.asset(
+        path.substring('asset:'.length),
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+      );
+    }
+    return Image.file(
+      File(path),
+      width: size,
+      height: size,
+      fit: BoxFit.cover,
     );
   }
 }
