@@ -79,7 +79,7 @@ class _TestExecutionScreenState extends State<TestExecutionScreen> {
       'Item',
       'NamingRT(ms.)',
       'DescriptionRT(ms.)',
-      'AssociationRT(ms.)',
+      'AccessRT(ms.)',
       'Accuracy',
     ]);
 
@@ -344,6 +344,10 @@ class _TestExecutionScreenState extends State<TestExecutionScreen> {
         await _speak('${_itemDescriptionLead(item.name)}. ${item.descInstruction}');
         break;
       case 2:
+        if (item.practiceDescExample != null &&
+            item.practiceDescExample!.trim().isNotEmpty) {
+          await _speak(item.practiceDescExample!);
+        }
         break;
       case 3:
         await _speak(item.choiceQuestion);

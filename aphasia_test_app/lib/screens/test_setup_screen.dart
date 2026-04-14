@@ -237,7 +237,7 @@ class _TestSetupScreenState extends State<TestSetupScreen> {
         children: [
           _row([
             _hCell('피검자명'),
-            _inputCell(controller: _nameCtrl, hint: '홍길순'),
+            _inputCell(controller: _nameCtrl, hint: ''),
             _hCell('검사일'),
             _plainCell(_testDate, color: Colors.grey),
           ]),
@@ -283,7 +283,7 @@ class _TestSetupScreenState extends State<TestSetupScreen> {
           _divider(),
           _row([
             _hCell('등록번호'),
-            _inputCell(controller: _regNoCtrl, hint: '2635114', isNumber: true),
+            _inputCell(controller: _regNoCtrl, hint: '', isNumber: true),
             _hCell('검사회차'),
             _inputCell(controller: _sessionCtrl, hint: '1', isNumber: true),
           ]),
@@ -297,7 +297,7 @@ class _TestSetupScreenState extends State<TestSetupScreen> {
       children: [
         _compactSection(
           '피검자명',
-          _outlinedInput(controller: _nameCtrl, hint: '홍길순'),
+          _outlinedInput(controller: _nameCtrl, hint: ''),
         ),
         _compactSection('검사일', _compactReadonly(_testDate)),
         _compactSection(
@@ -328,7 +328,7 @@ class _TestSetupScreenState extends State<TestSetupScreen> {
         _compactSection('검사코드', _outlinedTestCodeCell()),
         _compactSection(
           '등록번호',
-          _outlinedInput(controller: _regNoCtrl, hint: '2635114', isNumber: true),
+          _outlinedInput(controller: _regNoCtrl, hint: '', isNumber: true),
         ),
         _compactSection(
           '검사회차',

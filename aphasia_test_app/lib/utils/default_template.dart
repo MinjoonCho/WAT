@@ -1,6 +1,9 @@
 import '../models/test_item.dart';
 
 const _assetBase = 'asset:assets/default_template/';
+const _naming = TestItem.defaultNamingInstruction;
+const _description = TestItem.defaultDescriptionInstruction;
+const _choice = TestItem.defaultChoiceQuestion;
 
 String _asset(String fileName) => '$_assetBase$fileName';
 
@@ -10,15 +13,23 @@ List<TestItem> buildDefaultTemplateItems() {
       name: '시계',
       imagePath: _asset('practice_object_clock.png'),
       isPractice: true,
+      namingInstruction: _naming,
+      descInstruction: _description,
+      practiceDescExample: '시계는 시간을 알려주는 물건이에요.',
+      choiceQuestion: _choice,
       option1: '발',
       option1ImagePath: _asset('practice_option_foot.png'),
       option2: '손',
       option2ImagePath: _asset('practice_option_hand.png'),
       correctOptionIndex: 2,
+      practiceAnswerExplanation: '시계는 시간을 볼 때 사용해요. 발보다 손이 시계와 더 관련이 있어요.',
     ),
     TestItem(
       name: '젓가락',
       imagePath: _asset('item01_object_chopsticks.png'),
+      namingInstruction: _naming,
+      descInstruction: _description,
+      choiceQuestion: _choice,
       option1: '스테이크',
       option1ImagePath: _asset('item01_option_steak.png'),
       option2: '라면',
@@ -28,6 +39,9 @@ List<TestItem> buildDefaultTemplateItems() {
     TestItem(
       name: '비누',
       imagePath: _asset('item02_object_soap.png'),
+      namingInstruction: _naming,
+      descInstruction: _description,
+      choiceQuestion: _choice,
       option1: '양변기',
       option1ImagePath: _asset('item02_option_toilet.png'),
       option2: '세면대',
@@ -37,6 +51,9 @@ List<TestItem> buildDefaultTemplateItems() {
     TestItem(
       name: '선풍기',
       imagePath: _asset('item03_object_fan.png'),
+      namingInstruction: _naming,
+      descInstruction: _description,
+      choiceQuestion: _choice,
       option1: '부채',
       option1ImagePath: _asset('item03_option_handfan.png'),
       option2: '후라이팬',
@@ -46,6 +63,9 @@ List<TestItem> buildDefaultTemplateItems() {
     TestItem(
       name: '타이어',
       imagePath: _asset('item04_object_tire.png'),
+      namingInstruction: _naming,
+      descInstruction: _description,
+      choiceQuestion: _choice,
       option1: '자동차',
       option1ImagePath: _asset('item04_option_car.png'),
       option2: '배',
@@ -55,6 +75,9 @@ List<TestItem> buildDefaultTemplateItems() {
     TestItem(
       name: '주사기',
       imagePath: _asset('item05_object_syringe.png'),
+      namingInstruction: _naming,
+      descInstruction: _description,
+      choiceQuestion: _choice,
       option1: '헤드폰',
       option1ImagePath: _asset('item05_option_headphones.png'),
       option2: '청진기',
@@ -64,6 +87,9 @@ List<TestItem> buildDefaultTemplateItems() {
     TestItem(
       name: '수박',
       imagePath: _asset('item06_object_watermelon.png'),
+      namingInstruction: _naming,
+      descInstruction: _description,
+      choiceQuestion: _choice,
       option1: '씨',
       option1ImagePath: _asset('item06_option_seed.png'),
       option2: '알',
@@ -73,6 +99,9 @@ List<TestItem> buildDefaultTemplateItems() {
     TestItem(
       name: '넥타이',
       imagePath: _asset('item07_object_tie.png'),
+      namingInstruction: _naming,
+      descInstruction: _description,
+      choiceQuestion: _choice,
       option1: '한복',
       option1ImagePath: _asset('item07_option_hanbok.png'),
       option2: '양복',
@@ -82,6 +111,9 @@ List<TestItem> buildDefaultTemplateItems() {
     TestItem(
       name: '빨대',
       imagePath: _asset('item08_object_straw.png'),
+      namingInstruction: _naming,
+      descInstruction: _description,
+      choiceQuestion: _choice,
       option1: '컵',
       option1ImagePath: _asset('item08_option_cup.png'),
       option2: '접시',
@@ -91,6 +123,9 @@ List<TestItem> buildDefaultTemplateItems() {
     TestItem(
       name: '털장갑',
       imagePath: _asset('item09_object_gloves.png'),
+      namingInstruction: _naming,
+      descInstruction: _description,
+      choiceQuestion: _choice,
       option1: '목걸이',
       option2: '목도리',
       option2ImagePath: _asset('item09_option_scarf.png'),
@@ -99,6 +134,9 @@ List<TestItem> buildDefaultTemplateItems() {
     TestItem(
       name: '망치',
       imagePath: _asset('item10_object_hammer.png'),
+      namingInstruction: _naming,
+      descInstruction: _description,
+      choiceQuestion: _choice,
       option1: '볼트 나사',
       option1ImagePath: _asset('item10_option_bolt.png'),
       option2: '못',
@@ -108,6 +146,9 @@ List<TestItem> buildDefaultTemplateItems() {
     TestItem(
       name: '태극기',
       imagePath: _asset('item11_object_flag.png'),
+      namingInstruction: _naming,
+      descInstruction: _description,
+      choiceQuestion: _choice,
       option1: '무궁화',
       option2: '해바라기',
       option2ImagePath: _asset('item11_option_sunflower.png'),
@@ -116,6 +157,9 @@ List<TestItem> buildDefaultTemplateItems() {
     TestItem(
       name: '단추',
       imagePath: _asset('item12_object_button.png'),
+      namingInstruction: _naming,
+      descInstruction: _description,
+      choiceQuestion: _choice,
       option1: '밧줄',
       option2: '실',
       option2ImagePath: _asset('item12_option_thread.png'),
@@ -124,6 +168,9 @@ List<TestItem> buildDefaultTemplateItems() {
     TestItem(
       name: '빗자루',
       imagePath: _asset('item13_object_broom.png'),
+      namingInstruction: _naming,
+      descInstruction: _description,
+      choiceQuestion: _choice,
       option1: '국자',
       option1ImagePath: _asset('item13_option_ladle.png'),
       option2: '쓰레받기',
@@ -133,6 +180,9 @@ List<TestItem> buildDefaultTemplateItems() {
     TestItem(
       name: '스케이트',
       imagePath: _asset('item14_object_skate.png'),
+      namingInstruction: _naming,
+      descInstruction: _description,
+      choiceQuestion: _choice,
       option1: '눈사람',
       option1ImagePath: _asset('item14_option_snowman.png'),
       option2: '허수아비',
@@ -142,6 +192,9 @@ List<TestItem> buildDefaultTemplateItems() {
     TestItem(
       name: '유모차',
       imagePath: _asset('item15_object_stroller.png'),
+      namingInstruction: _naming,
+      descInstruction: _description,
+      choiceQuestion: _choice,
       option1: '젖병',
       option1ImagePath: _asset('item15_option_bottle.png'),
       option2: '와인잔',

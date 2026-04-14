@@ -1,14 +1,12 @@
 import 'dart:io';
+
 import 'package:archive/archive_io.dart';
-import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:csv/csv.dart';
+import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 데이터 확인 화면 (피험자 폴더 목록 및 클릭 시 상세 화면 이동)
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class FolderManagerScreen extends StatefulWidget {
   const FolderManagerScreen({super.key});
 
@@ -30,61 +28,75 @@ class _FolderManagerScreenState extends State<FolderManagerScreen> {
     setState(() => _isLoading = true);
     try {
       final root = await getApplicationDocumentsDirectory();
-      // 폴더만 필터링
       final dirs = root.listSync().whereType<Directory>().toList();
       setState(() {
         _patients = dirs;
         _isLoading = false;
       });
-    } catch (e) {
+    } catch (_) {
       setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
-    if (_patients.isEmpty) return const Center(child: Text('저장된 피험자 데이터가 없습니다.'));
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(title: const Text('데이터 확인')),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _patients.isEmpty
+              ? const Center(child: Text('저장된 환자 데이터가 없습니다.'))
+              : ListView.builder(
+                  itemCount: _patients.length,
+                  padding: const EdgeInsets.all(16),
+                  itemBuilder: (ctx, i) {
+                    final dir = _patients[i];
+                    final name = dir.path.split(Platform.pathSeparator).last;
+                    final fileCount = dir.listSync().whereType<File>().length;
 
-    return ListView.builder(
-      itemCount: _patients.length,
-      padding: const EdgeInsets.all(16),
-      itemBuilder: (ctx, i) {
-        final dir = _patients[i];
-        final name = dir.path.split(Platform.pathSeparator).last;
-        final fileCount = dir.listSync().whereType<File>().length;
-
-        return Card(
-          margin: const EdgeInsets.only(bottom: 8),
-          child: ListTile(
-            leading: const CircleAvatar(
-              backgroundColor: Color(0xFFF3E5F5),
-              child: Icon(Icons.folder, color: Color(0xFF9C27B0)),
-            ),
-            title: Text('등록번호: $name', style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text('저장된 파일: $fileCount개'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => PatientDetailScreen(patientDir: dir, regNo: name)),
-              );
-            },
-          ),
-        );
-      },
+                    return Card(
+                      color: Colors.white,
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: const CircleAvatar(
+                          backgroundColor: Color(0xFFF3E5F5),
+                          child: Icon(Icons.folder, color: Color(0xFF9C27B0)),
+                        ),
+                        title: Text(
+                          '등록번호: $name',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: Text('저장된 파일: ${fileCount}개'),
+                        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => PatientDetailScreen(
+                                patientDir: dir,
+                                regNo: name,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    );
+                  },
+                ),
     );
   }
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 피험자 파일 상세 및 미리보기 화면
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class PatientDetailScreen extends StatefulWidget {
   final Directory patientDir;
   final String regNo;
 
-  const PatientDetailScreen({super.key, required this.patientDir, required this.regNo});
+  const PatientDetailScreen({
+    super.key,
+    required this.patientDir,
+    required this.regNo,
+  });
 
   @override
   State<PatientDetailScreen> createState() => _PatientDetailScreenState();
@@ -108,14 +120,20 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
   }
 
   Future<void> _loadCsvIfExists() async {
-    final csvFile = _files.where((f) => f.path.endsWith('.csv')).firstOrNull;
-    if (csvFile != null) {
-      final input = await csvFile.readAsString();
-      final rows = const CsvToListConverter().convert(input);
-      setState(() {
-        _csvData = rows;
-      });
+    File? csvFile;
+    for (final file in _files) {
+      if (file.path.endsWith('.csv')) {
+        csvFile = file;
+        break;
+      }
     }
+
+    if (csvFile == null) return;
+
+    final input = await csvFile.readAsString();
+    final rows = const CsvToListConverter().convert(input);
+    if (!mounted) return;
+    setState(() => _csvData = rows);
   }
 
   @override
@@ -125,17 +143,21 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
   }
 
   Future<void> _playAudio(String path) async {
-    if (_currentlyPlayingPath == path && _audioPlayer.state == PlayerState.playing) {
+    if (_currentlyPlayingPath == path &&
+        _audioPlayer.state == PlayerState.playing) {
       await _audioPlayer.pause();
+      if (!mounted) return;
       setState(() => _currentlyPlayingPath = null);
-    } else {
-      await _audioPlayer.play(DeviceFileSource(path));
-      setState(() => _currentlyPlayingPath = path);
-      
-      _audioPlayer.onPlayerComplete.listen((_) {
-        if (mounted) setState(() => _currentlyPlayingPath = null);
-      });
+      return;
     }
+
+    await _audioPlayer.play(DeviceFileSource(path));
+    if (!mounted) return;
+    setState(() => _currentlyPlayingPath = path);
+
+    _audioPlayer.onPlayerComplete.listen((_) {
+      if (mounted) setState(() => _currentlyPlayingPath = null);
+    });
   }
 
   Future<void> _sharePatientFolder() async {
@@ -143,24 +165,26 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) {
-        final statusMsg = ValueNotifier<String>('압축 파일을 준비 중...');
+        final statusMsg = ValueNotifier<String>('압축 파일을 준비 중입니다.');
 
         Future(() async {
           try {
             final tempDir = await getTemporaryDirectory();
-            final zipPath = '${tempDir.path}${Platform.pathSeparator}WAT_${widget.regNo}.zip';
+            final zipPath =
+                '${tempDir.path}${Platform.pathSeparator}WAT_${widget.regNo}.zip';
             final encoder = ZipFileEncoder();
             encoder.create(zipPath);
 
             final entries = widget.patientDir.listSync(recursive: true);
             for (final entry in entries.whereType<File>()) {
-              final relativePath = entry.path.substring(widget.patientDir.path.length + 1);
+              final relativePath =
+                  entry.path.substring(widget.patientDir.path.length + 1);
               statusMsg.value = '압축 중: $relativePath';
               encoder.addFile(entry, relativePath);
             }
             encoder.close();
 
-            statusMsg.value = '공유 화면을 여는 중...';
+            statusMsg.value = '공유 화면을 여는 중입니다.';
             await SharePlus.instance.share(
               ShareParams(
                 files: [XFile(zipPath)],
@@ -195,7 +219,7 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
             TextButton(
               onPressed: () => Navigator.pop(ctx),
               child: const Text('닫기'),
-            )
+            ),
           ],
         );
       },
@@ -205,6 +229,7 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: Text('등록번호: ${widget.regNo}'),
         backgroundColor: const Color(0xFF9C27B0),
@@ -220,10 +245,10 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
       body: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 왼쪽: 파일 목록 (주로 녹음 파일들)
           Expanded(
             flex: 1,
             child: Container(
+              color: Colors.white,
               decoration: const BoxDecoration(
                 border: Border(right: BorderSide(color: Colors.black12)),
               ),
@@ -240,12 +265,26 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
                       isAudio ? Icons.audiotrack : Icons.table_chart,
                       color: isPlaying ? Colors.red : const Color(0xFF9C27B0),
                     ),
-                    title: Text(fname, style: TextStyle(fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal)),
-                    subtitle: Text('${(file.lengthSync() / 1024).toStringAsFixed(1)} KB'),
+                    title: Text(
+                      fname,
+                      style: TextStyle(
+                        fontWeight:
+                            isPlaying ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                    subtitle: Text(
+                      '${(file.lengthSync() / 1024).toStringAsFixed(1)} KB',
+                    ),
                     trailing: isAudio
                         ? IconButton(
-                            icon: Icon(isPlaying ? Icons.stop_circle : Icons.play_circle_fill,
-                                color: isPlaying ? Colors.red : const Color(0xFF9C27B0)),
+                            icon: Icon(
+                              isPlaying
+                                  ? Icons.stop_circle
+                                  : Icons.play_circle_fill,
+                              color: isPlaying
+                                  ? Colors.red
+                                  : const Color(0xFF9C27B0),
+                            ),
                             onPressed: () => _playAudio(file.path),
                           )
                         : null,
@@ -255,12 +294,19 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
               ),
             ),
           ),
-          // 오른쪽: CSV 테이블 미리보기 영역
           Expanded(
             flex: 2,
-            child: _csvData == null
-                ? const Center(child: Text('CSV 결과 파일이 없습니다.', style: TextStyle(color: Colors.grey)))
-                : _buildCsvTable(),
+            child: Container(
+              color: Colors.white,
+              child: _csvData == null
+                  ? const Center(
+                      child: Text(
+                        'CSV 결과 파일이 없습니다.',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    )
+                  : _buildCsvTable(),
+            ),
           ),
         ],
       ),
@@ -268,25 +314,47 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
   }
 
   Widget _buildCsvTable() {
-    if (_csvData!.isEmpty) return const Center(child: Text('데이터가 비어 있습니다.'));
+    if (_csvData!.isEmpty) {
+      return const Center(child: Text('데이터가 비어 있습니다.'));
+    }
 
-    // 앞단 8줄은 헤더 정보, 중간 공백, 그 다음부터 표 데이터로 들어옴
-    // 구조 처리를 단순화하여 모든 내용을 ListView와 테이블로 렌더링
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const Text('검사 결과 요약', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF9C27B0))),
+        const Text(
+          '검사 결과 요약',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF9C27B0),
+          ),
+        ),
         const SizedBox(height: 16),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: DataTable(
-            headingRowColor: WidgetStateProperty.resolveWith((states) => const Color(0xFFF3E5F5)),
-            columns: _csvData!.first.map((e) => DataColumn(label: Text(e.toString(), style: const TextStyle(fontWeight: FontWeight.bold)))).toList(),
-            rows: _csvData!.skip(1).map((row) {
-              return DataRow(
-                cells: row.map((e) => DataCell(Text(e.toString()))).toList(),
-              );
-            }).toList(),
+            headingRowColor: WidgetStateProperty.resolveWith(
+              (states) => const Color(0xFFF3E5F5),
+            ),
+            columns: _csvData!
+                .first
+                .map(
+                  (e) => DataColumn(
+                    label: Text(
+                      e.toString(),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                )
+                .toList(),
+            rows: _csvData!
+                .skip(1)
+                .map(
+                  (row) => DataRow(
+                    cells: row.map((e) => DataCell(Text(e.toString()))).toList(),
+                  ),
+                )
+                .toList(),
           ),
         ),
       ],

@@ -1,5 +1,8 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
 import 'admin_dashboard.dart';
 import 'test_setup_screen.dart';
 
@@ -11,20 +14,105 @@ class MainMenu extends StatefulWidget {
 }
 
 class _MainMenuState extends State<MainMenu> {
+  static const String _adminPassword = '0000';
+
   int _tapCount = 0;
   Timer? _tapTimer;
 
-  void _handleAdminEntry() {
+  @override
+  void dispose() {
+    _tapTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _handleAdminEntry() async {
     _tapCount++;
     _tapTimer?.cancel();
     _tapTimer = Timer(const Duration(seconds: 2), () => _tapCount = 0);
-    if (_tapCount >= 3) {
-      _tapCount = 0;
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const AdminDashboard()),
-      );
-    }
+
+    if (_tapCount < 3) return;
+
+    _tapCount = 0;
+    final granted = await _showAdminPasswordDialog();
+    if (!mounted || !granted) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AdminDashboard()),
+    );
+  }
+
+  Future<bool> _showAdminPasswordDialog() async {
+    final controller = TextEditingController();
+    var errorText = '';
+    var submitted = false;
+
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          void submit() {
+            if (submitted) return;
+
+            if (controller.text == _adminPassword) {
+              submitted = true;
+              Navigator.of(ctx).pop(true);
+              return;
+            }
+
+            setDialogState(() {
+              errorText = '비밀번호가 올바르지 않습니다.';
+            });
+          }
+
+          return AlertDialog(
+            title: const Text('관리자 비밀번호'),
+            content: SizedBox(
+              width: 320,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    obscureText: true,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    maxLength: 4,
+                    decoration: InputDecoration(
+                      hintText: '4자리 숫자',
+                      errorText: errorText.isEmpty ? null : errorText,
+                      counterText: '',
+                      border: const OutlineInputBorder(),
+                    ),
+                    onChanged: (_) {
+                      if (submitted) return;
+                      if (errorText.isEmpty) return;
+                      setDialogState(() => errorText = '');
+                    },
+                    onSubmitted: (_) => submit(),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('취소'),
+              ),
+              ElevatedButton(
+                onPressed: submit,
+                child: const Text('확인'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    return result ?? false;
   }
 
   @override
@@ -33,12 +121,11 @@ class _MainMenuState extends State<MainMenu> {
       backgroundColor: Colors.white,
       body: Stack(
         children: [
-          // Version 1.0 — 우상단
           const Positioned(
             top: 40,
             right: 40,
             child: Text(
-              'Version 1.0',
+              'Version 1.1',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -46,13 +133,10 @@ class _MainMenuState extends State<MainMenu> {
               ),
             ),
           ),
-
-          // 중앙 콘텐츠
           Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // WAT 타이틀
                 const Text(
                   'WAT',
                   style: TextStyle(
@@ -63,7 +147,6 @@ class _MainMenuState extends State<MainMenu> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                // Word Association Test
                 RichText(
                   text: const TextSpan(
                     style: TextStyle(
@@ -81,7 +164,7 @@ class _MainMenuState extends State<MainMenu> {
                         text: 'A',
                         style: TextStyle(color: Color(0xFF9C27B0)),
                       ),
-                      TextSpan(text: 'ssociation '),
+                      TextSpan(text: 'ccess '),
                       TextSpan(
                         text: 'T',
                         style: TextStyle(color: Color(0xFF9C27B0)),
@@ -91,7 +174,6 @@ class _MainMenuState extends State<MainMenu> {
                   ),
                 ),
                 const SizedBox(height: 36),
-                // 연구자 배지
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 28,
@@ -102,7 +184,7 @@ class _MainMenuState extends State<MainMenu> {
                     borderRadius: BorderRadius.circular(50),
                   ),
                   child: const Text(
-                    '김향희  /  예병석  /  김정완',
+                    '김향희  /  이대희  /  김정환',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 18,
@@ -113,8 +195,6 @@ class _MainMenuState extends State<MainMenu> {
               ],
             ),
           ),
-
-          // START 버튼 — 우하단
           Positioned(
             right: 48,
             bottom: 48,
@@ -138,8 +218,6 @@ class _MainMenuState extends State<MainMenu> {
               ),
             ),
           ),
-
-          // 숨겨진 관리자 진입 영역 — 좌하단 (data 라벨)
           Positioned(
             left: 0,
             bottom: 0,
